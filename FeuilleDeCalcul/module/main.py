@@ -36,19 +36,21 @@ def main_menu():
         else:
             print("Choix invalide, veuillez réessayer.")
 
-def print_results(excel_count, mobilisation_sum, outils_sum):
+def print_results(year, excel_count, mobilisation_sum, outils_sum):
     border = "+" + "-" * 60 + "+"
-    title = " RÉSULTATS DE L'ANALYSE "
+    title = f" RÉSULTATS DE L'ANALYSE {year} "
     formatted_mobilisation_sum = "${:,.2f}".format(mobilisation_sum)  # With comma as thousand separator, 2 decimal places, and a dollar sign
     formatted_outils_sum = "${:,.2f}".format(outils_sum)
 
     print(border)
     print(f"|{title.center(60)}|")
     print(border)
+    print(f"| Année:                 {str(year).rjust(20)}{' ' * 20}|")
     print(f"| Nombre Total de Projet: {str(excel_count).ljust(20)}{' ' * 20}|")
     print(f"| Mobilisation Total:     {formatted_mobilisation_sum.rjust(20)}{' ' * 20}|")
     print(f"| Outils Total:           {formatted_outils_sum.rjust(20)}{' ' * 20}|")
     print(border)
+
 
 def find_nearest_facturation_client_dir(file_path):
     """
@@ -95,9 +97,7 @@ def process_excel_files():
         print("Le répertoire fourni n'existe pas. Veuillez entrer un répertoire valide.")
         return
 
-    mobilisation_sum = 0
-    outils_sum = 0 
-    excel_count = 0
+    year_data = defaultdict(lambda: {'mobilisation_sum': 0, 'outils_sum': 0, 'excel_count': 0})
 
     for root, dirs, files in os.walk(directory):
         excel_files = [f for f in files if f.endswith('_EXECUTE.xlsm')]
@@ -106,14 +106,16 @@ def process_excel_files():
             path = os.path.join(root, filename)
             # Find the nearest /Facturation - Client/ directory for each _EXECUTE file
             facturation_client_dir = find_nearest_facturation_client_dir(path)
+            year = 2021
             if facturation_client_dir is None:
-                print(f"Facturation - Client directory not found for file {filename}")
-                # This is 2021
+                year = 2021
+                #print(f"Facturation - Client directory not found for file {filename}")
             else:
                 earliest_invoice_date = find_earliest_invoice_date(facturation_client_dir)
-                print(f"Earliest invoice date for {filename}: {earliest_invoice_date}")
-            excel_count += 1
-            path = os.path.join(root, filename)
+                year = datetime.strptime(earliest_invoice_date, "%d/%m/%Y").year
+                if year is None:
+                    print("Erreur lors de la détermination de l'année pour le fichier {filename}")
+
             try:
                 workbook = load_workbook(filename=path, data_only=True)
                 sheet = workbook.active
@@ -121,16 +123,20 @@ def process_excel_files():
                 outils_value = sheet['K52'].value
 
                 if mobilisation_value is not None and isinstance(mobilisation_value, (int, float)):
-                    mobilisation_sum += mobilisation_value
+                    year_data[year]['mobilisation_sum'] += mobilisation_value
                 if outils_value is not None and isinstance(outils_value, (int, float)):
-                    outils_sum += outils_value
+                    year_data[year]['outils_sum'] += outils_value
+
+                year_data[year]['excel_count'] += 1
 
             except Exception as e:
                 print(f"Erreur lors du traitement du fichier {filename} : {e}")
     
-    print_results(excel_count, mobilisation_sum, outils_sum)
+    for year, data in year_data.items():
+        print(f"\nRésultats pour l'année {year}:")
+        print_results(year, data['excel_count'], data['mobilisation_sum'], data['outils_sum'])
 
-    return excel_count, mobilisation_sum, outils_sum
+    return
 
 def process_pdf_files():
     directory = input("Veuillez saisir le chemin du répertoire pour les fichiers PDF: ")
