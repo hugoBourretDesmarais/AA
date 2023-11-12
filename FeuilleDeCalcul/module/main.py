@@ -1,28 +1,18 @@
 # main.py
 
-import warnings
 import os
-from openpyxl import load_workbook, Workbook
-from openpyxl.utils import get_column_letter
-from openpyxl.styles import PatternFill, Font, Alignment
-from tqdm import tqdm  # Import the tqdm module
+import re
+from datetime import datetime
+from collections import defaultdict
+import pdfplumber
+import warnings
+from openpyxl import load_workbook
 
 # Ignore specific UserWarning from openpyxl
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl.worksheet._reader")
 
 def main_menu():
-    # Get the directory of the current script
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-
-    # Construct the full path for banner.txt
-    banner_path = os.path.join(script_dir, 'bannerV2.txt')
-
-    try:
-        with open(banner_path, 'r') as banner_file:
-            banner_contents = banner_file.read()
-            print(banner_contents)
-    except FileNotFoundError:
-        print('''    _    _                 _       _                      _                  _   
+    print('''    _    _                 _       _                      _                  _   
    / \  | |_   _ _ __ ___ (_)_ __ (_)_   _ _ __ ___      / \   ___  ___ ___ | |_ 
   / _ \ | | | | | '_ ` _ \| | '_ \| | | | | '_ ` _ \    / _ \ / __|/ __/ _ \| __|
  / ___ \| | |_| | | | | | | | | | | | |_| | | | | | |  / ___ \\__ \ (_| (_) | |_ 
@@ -32,15 +22,14 @@ def main_menu():
     while True:
         print("\nMenu Principal")
         print("1. Analyse des fichiers Excel")
-        print("2. Générer un document Excel avec les résultats")
         print("0. Quitter")
         
         choice = input("Entrez votre choix: ")
         
         if choice == "1":
             process_excel_files()
-        elif choice == "2":
-            generate_excel_report()
+        elif choice == "3":
+            process_pdf_files()
         elif choice == "0":
             print("Fermeture du programme.")
             break
@@ -61,49 +50,44 @@ def print_results(excel_count, mobilisation_sum, outils_sum):
     print(f"| Outils Total:           {formatted_outils_sum.rjust(20)}{' ' * 20}|")
     print(border)
 
-def generate_excel_report():
-    excel_count, mobilisation_sum, outils_sum = process_excel_files()
+def find_nearest_facturation_client_dir(file_path):
+    """
+    Walks up the folder hierarchy from the directory of the given file
+    to find the nearest /Facturation - Client/ directory.
+    """
+    current_dir = os.path.dirname(file_path)
+    while current_dir != os.path.dirname(current_dir):  # Check until the root directory
+        for item in os.listdir(current_dir):
+            if item == "Facturation - Client" and os.path.isdir(os.path.join(current_dir, item)):
+                return os.path.join(current_dir, item)
+        current_dir = os.path.dirname(current_dir)
+    return None
 
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Résultats"
+def find_earliest_invoice_date(directory):
+    """
+    Finds the date of the earliest invoice in the specified directory.
+    """
+    earliest_date = None
+    date_pattern = r'\b\d{2}/\d{2}/\d{4}\b'  # Regex for date format DD/MM/YYYY
 
-    # Define styles
-    header_font = Font(bold=True, color="FFFFFF")
-    header_fill = PatternFill(start_color="4F81BD", end_color="4F81BD", fill_type="solid")
-    row_fill = PatternFill(start_color="D9E2F3", end_color="D9E2F3", fill_type="solid")
+    for filename in os.listdir(directory):
+        if filename.lower().endswith('.pdf'):
+            path = os.path.join(directory, filename)
+            try:
+                with pdfplumber.open(path) as pdf:
+                    for page in pdf.pages:
+                        text = page.extract_text()
+                        if text:
+                            matches = re.findall(date_pattern, text)
+                            for match in matches:
+                                date = datetime.strptime(match, "%d/%m/%Y")
+                                if earliest_date is None or date < earliest_date:
+                                    earliest_date = date
+            except Exception as e:
+                print(f"Erreur lors du traitement du fichier PDF {filename} : {e}")
 
-    # Add headers
-    headers = ["Total des Projets", "Mobilisation Total", "Outils Total"]
-    ws.append(headers)
-    
-    # Apply styles to headers
-    for col in range(1, len(headers) + 1):
-        cell = ws.cell(row=1, column=col)
-        cell.font = header_font
-        cell.fill = header_fill
-        cell.alignment = Alignment(horizontal="center")
+    return earliest_date.strftime("%d/%m/%Y") if earliest_date else None
 
-    # Add data
-    data = [excel_count, mobilisation_sum, outils_sum]
-    ws.append(data)
-
-    # Style data rows with alternating colors
-    for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=1, max_col=ws.max_column):
-        for cell in row:
-            cell.alignment = Alignment(horizontal="center")
-            if cell.row % 2 == 0:
-                cell.fill = row_fill
-
-    # Set column width
-    for col in ws.columns:
-        max_length = max(len(str(cell.value)) for cell in col)
-        adjusted_width = (max_length + 2)
-        ws.column_dimensions[get_column_letter(col[0].column)].width = adjusted_width
-
-    output_filename = "Rapport_Analyse.xlsx"
-    wb.save(output_filename)
-    print(f"Le rapport a été généré: {output_filename}")
 
 def process_excel_files():
     directory = input("Veuillez saisir le chemin du répertoire: ")
@@ -115,13 +99,19 @@ def process_excel_files():
     outils_sum = 0 
     excel_count = 0
 
-    # Use os.walk to recursively traverse the directories
     for root, dirs, files in os.walk(directory):
-        # Filter files to include only those ending with '_EXECUTE.xlsm'
         excel_files = [f for f in files if f.endswith('_EXECUTE.xlsm')]
-
-        # Use tqdm to show the progress bar, iterating over the list of Excel files
-        for filename in tqdm(excel_files, desc="Processing Excel files"):
+        
+        for filename in excel_files:
+            path = os.path.join(root, filename)
+            # Find the nearest /Facturation - Client/ directory for each _EXECUTE file
+            facturation_client_dir = find_nearest_facturation_client_dir(path)
+            if facturation_client_dir is None:
+                print(f"Facturation - Client directory not found for file {filename}")
+                # This is 2021
+            else:
+                earliest_invoice_date = find_earliest_invoice_date(facturation_client_dir)
+                print(f"Earliest invoice date for {filename}: {earliest_invoice_date}")
             excel_count += 1
             path = os.path.join(root, filename)
             try:
@@ -141,6 +131,36 @@ def process_excel_files():
     print_results(excel_count, mobilisation_sum, outils_sum)
 
     return excel_count, mobilisation_sum, outils_sum
+
+def process_pdf_files():
+    directory = input("Veuillez saisir le chemin du répertoire pour les fichiers PDF: ")
+    if not os.path.isdir(directory):
+        print("Le répertoire fourni n'existe pas. Veuillez entrer un répertoire valide.")
+        return
+
+    date_pattern = r'\b\d{2}/\d{2}/\d{4}\b'  # Regex for date format DD/MM/YYYY
+    found_dates = []
+
+    # Use os.walk to recursively traverse the directories
+    for root, dirs, files in os.walk(directory):
+        # Filter files to include only PDF files
+        pdf_files = [f for f in files if f.lower().endswith('.pdf')]
+
+        for filename in pdf_files:
+            path = os.path.join(root, filename)
+            try:
+                with pdfplumber.open(path) as pdf:
+                    for page in pdf.pages:
+                        text = page.extract_text()
+                        if text:
+                            matches = re.findall(date_pattern, text)
+                            found_dates.extend(matches)
+            except Exception as e:
+                print(f"Erreur lors du traitement du fichier PDF {filename} : {e}")
+
+    print("Dates trouvées dans les fichiers PDF:")
+    for date in set(found_dates):
+        print(date)
 
 
 
