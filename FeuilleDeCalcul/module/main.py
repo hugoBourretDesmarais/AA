@@ -100,7 +100,7 @@ def process_excel_files():
     year_data = defaultdict(lambda: {'mobilisation_sum': 0, 'outils_sum': 0, 'excel_count': 0})
 
     for root, dirs, files in os.walk(directory):
-        excel_files = [f for f in files if f.endswith('_EXECUTE.xlsm')]
+        excel_files = [f for f in files if f.lower().endswith('_execute.xlsm')]
         
         for filename in excel_files:
             path = os.path.join(root, filename)
