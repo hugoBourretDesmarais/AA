@@ -116,28 +116,41 @@ def process_excel_files():
                 workbook = load_workbook(filename=path, data_only=True)
                 sheet = workbook['Feuille Calcul']
                 
-                # Read the specific cells for each Excel file
+                # Use the named range directly. Example: sheet.defined_names['ADMPro'].value
+                # You might need a function to get the value from a named range, like this:
+                def get_named_range_value(workbook, name):
+                    if name in workbook.defined_names:  # Check if the named range exists
+                        dest = workbook.defined_names[name].destinations  # Get cell destinations
+                        for title, coord in dest:
+                            return workbook[title][coord].value
+                    return None  # Return None if the named range does not exist
+                
+                # Access data via named ranges
                 data = {
                     'Path': path,
-                    'ID': sheet['I2'].value,
-                    'Nom Projet': sheet['A3'].value,
-                    'Date Soumission': None,  # Not provided
-                    'Date Facturation': None,  # Not provided
-                    'Pliage': sheet['K38'].value,
-                    'Scellant': sheet['K39'].value,
-                    'Frais Admin': sheet['K50'].value,
-                    'Outils': sheet['K52'].value,
-                    'Mobilisation': sheet['K53'].value,
-                    'Frais Dép + Camion': sheet['K54'].value,
-                    'Remorquage': sheet['K55'].value,
-                    'Machinerie': sheet['K56'].value,
-                    'C.P': sheet['K58'].value,
-                    'ADM/Pro': sheet['K61'].value,
-                    'Jours': sheet['C63'].value,
-                    'Heures': sheet['D63'].value,
-                    'Jour Homme': sheet['C64'].value,
-                    'Total Installation': sheet['H63'].value,
-                    'Grand Total': sheet['K63'].value,
+                    'ID': get_named_range_value(workbook, 'SomeNamedRangeForID'),  # Update named range
+                    'Nom Projet': get_named_range_value(workbook, 'SomeNamedRangeForNomProjet'),
+                    'Date Soumission': get_named_range_value(workbook, 'DateSoumission'),
+                    'Date Facturation': get_named_range_value(workbook, 'DateFacturation'),
+                    'Pliage': get_named_range_value(workbook, 'Pliage'),
+                    'Scellant': get_named_range_value(workbook, 'Scellant'),
+                    'Frais Admin': get_named_range_value(workbook, 'ADMIN'),
+                    'Outils': get_named_range_value(workbook, 'Outils'),
+                    'Mobilisation': get_named_range_value(workbook, 'Mobilisation'),
+                    'Frais Dép + Camion': get_named_range_value(workbook, 'FraisDeplacement'),
+                    'Remorquage': get_named_range_value(workbook, 'Remorquage'),
+                    'Machinerie': get_named_range_value(workbook, 'Machinerie'),
+                    'C.P': get_named_range_value(workbook, 'C.P'),
+                    'ADM/Pro': get_named_range_value(workbook, 'ADMPro'),
+                    'Jours': get_named_range_value(workbook, 'Jours'),
+                    'Heures': get_named_range_value(workbook, 'Heures'),
+                    'Jour Homme': get_named_range_value(workbook, 'JourHomme'),
+                    'Total Installation': get_named_range_value(workbook, 'TotalInstallation'),
+                    'Grand Total': get_named_range_value(workbook, 'GrandTotal'),
+                    'LivraisonFournisseur': get_named_range_value(workbook, 'LivraisonFournisseur'),
+                    'Taux': get_named_range_value(workbook, 'Taux'),
+                    'BSDQ': get_named_range_value(workbook, 'BSDQ'),
+                    'Entrepreneur': get_named_range_value(workbook, 'Entrepreneur'),
                 }
                 
                 # Add the data to the aggregated list
@@ -152,10 +165,11 @@ def process_excel_files():
 
     # Write the header to the new sheet
     headers = [
-        'Path','ID', 'Nom Projet', 'Date Soumission', 'Date Facturation', 'Pliage', 'Scellant',
+        'Path', 'ID', 'Nom Projet', 'Date Soumission', 'Date Facturation', 'Pliage', 'Scellant',
         'Frais Admin', 'Outils', 'Mobilisation', 'Frais Dép + Camion', 'Remorquage',
         'Machinerie', 'C.P', 'ADM/Pro', 'Jours', 'Heures', 'Jour Homme',
-        'Total Installation', 'Grand Total'
+        'Total Installation', 'Grand Total', 'LivraisonFournisseur', 'Taux', 'BSDQ', 'Entrepreneur'
+        # Add more headers as needed
     ]
     dest_sheet.append(headers)
 

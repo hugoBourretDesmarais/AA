@@ -31,4 +31,6 @@ On Mac: source venv/bin/activate
 
 4. Install the required packages: pip install -r requirements.txt
 
-5. Build the script with: `pyinstaller --onefile main.py`
+5. python3 main.py
+
+6. Build the script with: `pyinstaller --onefile main.py`
