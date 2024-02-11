@@ -7,6 +7,8 @@ from collections import defaultdict
 import pdfplumber
 import warnings
 from openpyxl import load_workbook
+from openpyxl import Workbook
+
 
 # Ignore specific UserWarning from openpyxl
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl.worksheet._reader")
@@ -92,51 +94,79 @@ def find_earliest_invoice_date(directory):
 
 
 def process_excel_files():
+    # Ask the user for the directory path
     directory = input("Veuillez saisir le chemin du répertoire: ")
+    
+    # Check if the directory exists
     if not os.path.isdir(directory):
         print("Le répertoire fourni n'existe pas. Veuillez entrer un répertoire valide.")
         return
 
-    year_data = defaultdict(lambda: {'mobilisation_sum': 0, 'outils_sum': 0, 'excel_count': 0})
+    # A list to hold all aggregated data
+    aggregated_data = []
 
+    # Traverse the directory to find Excel files with the pattern '_execute.xlsm'
     for root, dirs, files in os.walk(directory):
         excel_files = [f for f in files if f.lower().endswith('_execute.xlsm')]
-        
+
+        # Process each Excel file
         for filename in excel_files:
             path = os.path.join(root, filename)
-            # Find the nearest /Facturation - Client/ directory for each _EXECUTE file
-            facturation_client_dir = find_nearest_facturation_client_dir(path)
-            year = 2021
-            if facturation_client_dir is None:
-                year = 2021
-                #print(f"Facturation - Client directory not found for file {filename}")
-            else:
-                earliest_invoice_date = find_earliest_invoice_date(facturation_client_dir)
-                year = datetime.strptime(earliest_invoice_date, "%d/%m/%Y").year
-                if year is None:
-                    print("Erreur lors de la détermination de l'année pour le fichier {filename}")
-
             try:
                 workbook = load_workbook(filename=path, data_only=True)
-                sheet = workbook.active
-                mobilisation_value = sheet['K53'].value
-                outils_value = sheet['K52'].value
-
-                if mobilisation_value is not None and isinstance(mobilisation_value, (int, float)):
-                    year_data[year]['mobilisation_sum'] += mobilisation_value
-                if outils_value is not None and isinstance(outils_value, (int, float)):
-                    year_data[year]['outils_sum'] += outils_value
-
-                year_data[year]['excel_count'] += 1
+                sheet = workbook['Feuille Calcul']
+                
+                # Read the specific cells for each Excel file
+                data = {
+                    'Path': path,
+                    'ID': sheet['I2'].value,
+                    'Nom Projet': sheet['A3'].value,
+                    'Date Soumission': None,  # Not provided
+                    'Date Facturation': None,  # Not provided
+                    'Pliage': sheet['K38'].value,
+                    'Scellant': sheet['K39'].value,
+                    'Frais Admin': sheet['K50'].value,
+                    'Outils': sheet['K52'].value,
+                    'Mobilisation': sheet['K53'].value,
+                    'Frais Dép + Camion': sheet['K54'].value,
+                    'Remorquage': sheet['K55'].value,
+                    'Machinerie': sheet['K56'].value,
+                    'C.P': sheet['K58'].value,
+                    'ADM/Pro': sheet['K61'].value,
+                    'Jours': sheet['C63'].value,
+                    'Heures': sheet['D63'].value,
+                    'Jour Homme': sheet['C64'].value,
+                    'Total Installation': sheet['H63'].value,
+                    'Grand Total': sheet['K63'].value,
+                }
+                
+                # Add the data to the aggregated list
+                aggregated_data.append(data)
 
             except Exception as e:
                 print(f"Erreur lors du traitement du fichier {filename} : {e}")
-    
-    for year, data in year_data.items():
-        print(f"\nRésultats pour l'année {year}:")
-        print_results(year, data['excel_count'], data['mobilisation_sum'], data['outils_sum'])
 
-    return
+    # Create a new workbook and select the active sheet
+    new_workbook = Workbook()
+    dest_sheet = new_workbook.active
+
+    # Write the header to the new sheet
+    headers = [
+        'Path','ID', 'Nom Projet', 'Date Soumission', 'Date Facturation', 'Pliage', 'Scellant',
+        'Frais Admin', 'Outils', 'Mobilisation', 'Frais Dép + Camion', 'Remorquage',
+        'Machinerie', 'C.P', 'ADM/Pro', 'Jours', 'Heures', 'Jour Homme',
+        'Total Installation', 'Grand Total'
+    ]
+    dest_sheet.append(headers)
+
+    # Write the aggregated data to the new sheet
+    for data in aggregated_data:
+        row = [data[header] for header in headers]
+        dest_sheet.append(row)
+
+    # Save the new workbook
+    new_workbook.save(os.path.join(directory, 'aggregated_data.xlsx'))
+    print("Données agrégées avec succès.")
 
 def process_pdf_files():
     directory = input("Veuillez saisir le chemin du répertoire pour les fichiers PDF: ")
